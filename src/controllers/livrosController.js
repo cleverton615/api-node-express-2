@@ -1,14 +1,15 @@
+import { parse } from "dotenv";
 import NaoEncontrado from "../erros/NaoEncontrado.js";
-import { livros } from "../models/index.js";
+import { autores, livros } from "../models/index.js";
 
 class LivroController {
   static listarLivros = async (req, res, next) => {
     try {
-      const livrosResultado = await livros.find().populate("autor").exec();
-
-      res.status(200).json(livrosResultado);
+      const buscaLivros = livros.find();
+      req.resultado = buscaLivros;
+      next();
     } catch (erro) {
-      next(erro);
+      next(erro); //Em caso de erro durante a execução da consulta, passa o erro para o próximo middleware de tratamento de erros
     }
   };
 
@@ -79,21 +80,25 @@ class LivroController {
 
   static listarLivroPorFiltro = async (req, res, next) => {
     try {
-      const busca = processaBusca(req.query);
+      const busca = await processaBusca(req.query);
 
-      const livrosResultado = await livros.find(busca);
-
-      res.status(200).send(livrosResultado);
+      if (busca !== null) {
+        const livrosResultado = livros.find(busca).populate("autor");
+        req.resultado = livrosResultado;
+        next();
+      } else {
+        res.status(200).send([]);
+      }
     } catch (erro) {
       next(erro);
     }
   };
 }
 
-function processaBusca(parametros) {
-  const { editora, titulo, minPaginas, maxPaginas } = parametros;
+async function processaBusca(parametros) {
+  const { editora, titulo, minPaginas, maxPaginas, nomeAutor } = parametros;
 
-  const busca = {};
+  let busca = {};
 
   if (editora) busca.editora = editora;
   if (titulo) busca.titulo = { $regex: titulo, $options: "i" };
@@ -105,6 +110,16 @@ function processaBusca(parametros) {
 
   // lte = Less Than or Equal = Menor ou Igual que
   if (maxPaginas) busca.numeroPaginas.$lte = maxPaginas;
+
+  if (nomeAutor) {
+    const autor = await autores.findOne({ nome: nomeAutor });
+
+    if (autor !== null) {
+      busca.autor = autor._id;
+    } else {
+      busca = null;
+    }
+  }
 
   return busca;
 }
